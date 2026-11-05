@@ -1,50 +1,67 @@
+# src/ingestion/extract_players.py
+"""Extract player information and match IDs from the PUBG API.
+The function returns a Python ``dict`` that can be directly serialized to JSON
+by ``json.dump`` in ``src/main.py``.
+"""
+
 import os
+import json
 import requests
 from dotenv import load_dotenv
-import json
+from typing import Dict, List, Optional
 
-"""Functions to extract player data from PUBG API.
-Placeholder implementation – replace with actual logic.
-"""
+# Load environment variables once when the module is imported
 load_dotenv()
-api_key = os.getenv("PUBG_API_KEY")
+API_KEY = os.getenv("PUBG_API_KEY")
 
-def extract_players(player_names):
+
+def extract_players(player_names: str) -> Optional[Dict]:
+    """Fetch a player's basic data and the IDs of matches they have played.
+
+    Args:
+        player_names: A single player name or a comma‑separated list of names.
+
+    Returns:
+        ``{"general": {...}, "matches": ["match_id1", "match_id2", ...]}``
+        or ``None`` if the request fails.
+    """
     url = f"https://api.pubg.com/shards/steam/players?filter[playerNames]={player_names}"
-    payload = {}
     headers = {
-        "Authorization": f"Bearer {api_key}",
-        "accept": "application/vnd.api+json"
+        "Authorization": f"Bearer {API_KEY}",
+        "Accept": "application/vnd.api+json",
     }
 
-    print(url)   
     try:
-        response = requests.get(url, headers=headers, data=payload)
-        account_id = response.json()["data"][0]["id"]
-        type = response.json()["data"][0]["type"]
-        clanId = response.json()["data"][0]["attributes"]["clanId"]
-        name = response.json()["data"][0]["attributes"]["name"]
-        stats = response.json()["data"][0]["attributes"]["stats"]
-        titleId = response.json()["data"][0]["attributes"]["titleId"]
-        shardId = response.json()["data"][0]["attributes"]["shardId"]
-        patchVersion = response.json()["data"][0]["attributes"]["patchVersion"]
-        banType = response.json()["data"][0]["attributes"]["banType"]
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        payload = response.json()["data"][0]
 
-        final_data = json.dumps({
-            "account_id": account_id, 
-            "type": type,
-            "clanId": clanId,
-            "name": name,
-            "stats": stats,
-            "titleId": titleId,
-            "shardId": shardId,
-            "patchVersion": patchVersion,
-            "banType": banType
-        })
-        return final_data
+        # -------------------------------------------------------------------
+        # General player attributes
+        # -------------------------------------------------------------------
+        attributes = payload.get("attributes", {})
+        general = {
+            "account_id": payload.get("id"),
+            "type": payload.get("type"),
+            "clanId": attributes.get("clanId"),
+            "name": attributes.get("name"),
+            "stats": attributes.get("stats"),
+            "titleId": attributes.get("titleId"),
+            "shardId": attributes.get("shardId"),
+            "patchVersion": attributes.get("patchVersion"),
+            "banType": attributes.get("banType"),
+        }
 
-    except Exception as e:
-        print(e)
+        # -------------------------------------------------------------------
+        # Extract match IDs from the ``relationships`` section
+        # -------------------------------------------------------------------
+        relationships = payload.get("relationships", {})
+        matches_data = relationships.get("matches", {}).get("data", [])
+        match_ids: List[str] = [m.get("id") for m in matches_data if "id" in m]
+
+        return {"general": general, "matches": match_ids}
+
+    except Exception as exc:
+        # Simple console output – in production replace with a logger
+        print(f"[extract_players] error: {exc}")
         return None
-    
-    

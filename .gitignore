@@ -3,3 +3,6 @@
 __pycache__
 AGENT.md
 data/*
+logs/
+postgres_data/
+airflow/logs/
