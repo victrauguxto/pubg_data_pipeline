@@ -69,6 +69,10 @@ def step_1_extract_player(conn, player_name: str) -> list[str]:
 
     match_ids = player_data.get("matches", [])
     logger.info("Player '%s' → %d matches found.", player_name, len(match_ids))
+    max_matches = os.getenv("MAX_MATCHES_PER_PLAYER", "0")
+    if max_matches.isdigit() and int(max_matches) > 0:
+        match_ids = match_ids[: int(max_matches)]
+        logger.info("Limited to the %d most recent matches.", len(match_ids))
     return match_ids
 
 

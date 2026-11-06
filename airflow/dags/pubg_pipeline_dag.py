@@ -33,6 +33,9 @@ logger = logging.getLogger("pubg_dag")
 PLAYER_NAMES = os.getenv("PLAYER_NAMES", "v1t1n")
 _raw_limit = os.getenv("API_CALLS_LIMIT", "10")
 API_RATE_LIMIT = int(_raw_limit) if _raw_limit.isdigit() else 10
+# Most recent matches to ingest per player (0 = all the API returns, ~14 days)
+_raw_max = os.getenv("MAX_MATCHES_PER_PLAYER", "0")
+MAX_MATCHES_PER_PLAYER = int(_raw_max) if _raw_max.isdigit() else 0
 
 
 def _throttle():
@@ -71,6 +74,8 @@ def task_extract_player(**context):
             conn.commit()
 
             match_ids = player_data.get("matches", [])
+            if MAX_MATCHES_PER_PLAYER:
+                match_ids = match_ids[:MAX_MATCHES_PER_PLAYER]
             all_match_ids.extend(match_ids)
             logger.info("Player '%s' → %d matches", player_name, len(match_ids))
     finally:

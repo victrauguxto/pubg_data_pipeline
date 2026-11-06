@@ -93,6 +93,7 @@ Edit `.env` and fill in at least `PUBG_API_KEY` and `PLAYER_NAMES` (comma-separa
 |---|---|---|
 | `PUBG_API_KEY` | PUBG API key | — |
 | `PLAYER_NAMES` | Players to track, comma-separated | `v1t1n` |
+| `MAX_MATCHES_PER_PLAYER` | Most recent matches to ingest per player (`0` = all the API returns, about 14 days) | `0` |
 | `PUBG_SHARD` | Platform (`steam`, `kakao`, `console`...) | `steam` |
 | `API_CALLS_LIMIT` | Allowed requests per minute | `10` |
 | `POSTGRES_*` | Database credentials | see `.env.example` |

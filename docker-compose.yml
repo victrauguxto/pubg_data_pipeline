@@ -1,17 +1,16 @@
-version: "3.8"
-
 x-airflow-common: &airflow-common
   image: apache/airflow:2.8.0-python3.11
   environment: &airflow-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__CORE__FERNET_KEY: ""
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-pubg}:${POSTGRES_PASSWORD:-pubg_secret}@postgres:5432/airflow
     # Pass project env vars to Airflow tasks
     PUBG_API_KEY: ${PUBG_API_KEY}
     API_CALLS_LIMIT: ${API_CALLS_LIMIT:-10}
     PUBG_SHARD: ${PUBG_SHARD:-steam}
     PLAYER_NAMES: ${PLAYER_NAMES:-v1t1n}
+    MAX_MATCHES_PER_PLAYER: ${MAX_MATCHES_PER_PLAYER:-0}
     POSTGRES_HOST: postgres
     POSTGRES_PORT: "5432"
     POSTGRES_DB: ${POSTGRES_DB:-pubg}
