@@ -90,8 +90,11 @@ CREATE INDEX IF NOT EXISTS idx_rosters_match
 CREATE SCHEMA IF NOT EXISTS gold;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS gold.player_career AS
+-- One row per player_id. The name is the most recent one, since players can
+-- rename. AI bots (player_id 'ai.*') are excluded: the API reuses their IDs
+-- across matches with different names, so they have no career to aggregate.
 SELECT
-    pms.player_name,
+    (ARRAY_AGG(pms.player_name ORDER BY m.created_at DESC))[1] AS player_name,
     pms.player_id,
     COUNT(DISTINCT pms.match_id)                        AS matches_played,
     ROUND(AVG(pms.kills)::numeric, 2)                   AS avg_kills,
@@ -108,7 +111,9 @@ SELECT
     MAX(pms.damage_dealt)                               AS best_damage
 FROM silver.player_match_stats pms
 JOIN silver.rosters r ON r.roster_id = pms.roster_id
-GROUP BY pms.player_name, pms.player_id;
+JOIN silver.matches m ON m.match_id = pms.match_id
+WHERE pms.player_id NOT LIKE 'ai.%'
+GROUP BY pms.player_id;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_player_career_player_id
     ON gold.player_career(player_id);
