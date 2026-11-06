@@ -1,17 +1,17 @@
 # PUBG Data Pipeline
 
-Pipeline de dados que coleta estatísticas de partidas da [API oficial do PUBG](https://documentation.pubg.com/), armazena os dados brutos em PostgreSQL e os transforma em tabelas analíticas seguindo a **arquitetura medalhão** (Bronze → Silver → Gold). A orquestração é feita com **Apache Airflow** e todo o ambiente sobe com **Docker Compose**.
+A data pipeline that collects match statistics from the [official PUBG API](https://documentation.pubg.com/), stores the raw data in PostgreSQL and transforms it into analytical tables following the **medallion architecture** (Bronze → Silver → Gold). Orchestration runs on **Apache Airflow**, and the whole environment starts with **Docker Compose**.
 
 ## Stack
 
-| Camada | Tecnologia |
+| Layer | Technology |
 |---|---|
-| Orquestração | Apache Airflow 2.8 (LocalExecutor) |
-| Armazenamento | PostgreSQL 16 |
-| Ingestão / transformação | Python 3.11, `requests`, `psycopg2` |
-| Infraestrutura | Docker Compose |
+| Orchestration | Apache Airflow 2.8 (LocalExecutor) |
+| Storage | PostgreSQL 16 |
+| Ingestion / transformation | Python 3.11, `requests`, `psycopg2` |
+| Infrastructure | Docker Compose |
 
-## Arquitetura
+## Architecture
 
 ```mermaid
 flowchart LR
@@ -24,94 +24,94 @@ flowchart LR
     S3 --> G
 ```
 
-### Camadas
+### Layers
 
-- **Bronze**: payloads JSON da API gravados como `JSONB`, sem transformação. Serve como fonte da verdade e permite reprocessar tudo sem chamar a API de novo.
-- **Silver**: modelo relacional normalizado com chaves e constraints:
-  - `silver.matches`: metadados da partida (modo, mapa, duração, data)
-  - `silver.rosters`: equipes de cada partida, com colocação e vitória
-  - `silver.player_match_stats`: estatísticas de cada jogador por partida (kills, dano, distância percorrida, tempo vivo etc.)
-- **Gold**: `gold.player_career`, uma materialized view com métricas agregadas por jogador (partidas, médias de kills e dano, vitórias, melhores marcas).
+- **Bronze**: API JSON payloads stored as `JSONB`, untransformed. It is the source of truth and lets everything be reprocessed without calling the API again.
+- **Silver**: a normalized relational model with keys and constraints:
+  - `silver.matches`: match metadata (mode, map, duration, date)
+  - `silver.rosters`: the teams in each match, with placement and win
+  - `silver.player_match_stats`: each player's stats per match (kills, damage, distance traveled, time survived, etc.)
+- **Gold**: `gold.player_career`, a materialized view with aggregated metrics per player (matches, average kills and damage, wins, personal bests).
 
-## DAG do Airflow
+## Airflow DAG
 
-DAG `pubg_pipeline`, agendada para rodar diariamente (`@daily`, sem catchup, 2 retries com 5 min de intervalo):
+The `pubg_pipeline` DAG is scheduled to run daily (`@daily`, no catchup, 2 retries 5 minutes apart):
 
 ```
 extract_player >> extract_matches >> normalize_to_silver >> refresh_gold
 ```
 
-| Task | O que faz |
+| Task | What it does |
 |---|---|
-| `extract_player` | Busca o perfil de cada jogador em `PLAYER_NAMES`, grava em `bronze.raw_players` e publica os IDs das partidas recentes via **XCom** |
-| `extract_matches` | Lê os IDs do XCom, baixa só as partidas que ainda não estão no bronze e grava em `bronze.raw_matches` |
-| `normalize_to_silver` | Lê partidas do bronze que ainda não existem no silver e popula as tabelas relacionais |
-| `refresh_gold` | Executa `REFRESH MATERIALIZED VIEW CONCURRENTLY gold.player_career` |
+| `extract_player` | Fetches the profile of each player in `PLAYER_NAMES`, writes it to `bronze.raw_players` and publishes the recent match IDs via **XCom** |
+| `extract_matches` | Reads the IDs from XCom, downloads only the matches not yet in bronze and writes them to `bronze.raw_matches` |
+| `normalize_to_silver` | Reads bronze matches not yet in silver and populates the relational tables |
+| `refresh_gold` | Runs `REFRESH MATERIALIZED VIEW CONCURRENTLY gold.player_career` |
 
-### Decisões de engenharia
+### Engineering decisions
 
-- **Idempotência**: todas as cargas usam `INSERT ... ON CONFLICT`, e partidas já ingeridas são puladas antes da chamada à API. Rodar a DAG várias vezes no mesmo dia não duplica dados nem gasta requisições.
-- **Processamento incremental**: o silver só processa partidas novas do bronze, e o gold é atualizado com `CONCURRENTLY`, sem bloquear leituras.
-- **Rate limiting**: a API do PUBG limita requisições por minuto. O pipeline espaça as chamadas conforme `API_CALLS_LIMIT`.
-- **Separação de responsabilidades**: a lógica de negócio fica em `src/` (ingestão, transformação, carga) e a DAG só orquestra. O mesmo código roda fora do Airflow via `src/main.py`.
+- **Idempotency**: every load uses `INSERT ... ON CONFLICT`, and matches already ingested are skipped before the API call. Running the DAG several times on the same day neither duplicates data nor spends requests.
+- **Incremental processing**: silver only processes new matches from bronze, and gold is refreshed `CONCURRENTLY`, without blocking reads.
+- **Rate limiting**: the PUBG API limits requests per minute. The pipeline spaces calls according to `API_CALLS_LIMIT`.
+- **Separation of concerns**: business logic lives in `src/` (ingestion, transformation, load), and the DAG only orchestrates. The same code runs outside Airflow through `src/main.py`.
 
-## Estrutura do projeto
+## Project structure
 
 ```
 .
 ├── airflow/
 │   └── dags/
-│       └── pubg_pipeline_dag.py   # definição da DAG
+│       └── pubg_pipeline_dag.py   # DAG definition
 ├── sql/
-│   └── 001_create_schemas.sql     # schemas bronze/silver/gold (roda no 1º boot do Postgres)
+│   └── 001_create_schemas.sql     # bronze/silver/gold schemas (run on Postgres's first boot)
 ├── src/
-│   ├── ingestion/                 # chamadas à API do PUBG
-│   ├── processing/                # transformação bronze → silver e refresh do gold
-│   ├── load/                      # conexão e upserts no Postgres
-│   └── main.py                    # execução local sem Airflow
+│   ├── ingestion/                 # PUBG API calls
+│   ├── processing/                # bronze → silver transformation and gold refresh
+│   ├── load/                      # Postgres connection and upserts
+│   └── main.py                    # local run without Airflow
 ├── docker-compose.yml
 ├── requirements.txt
 └── .env.example
 ```
 
-## Como executar
+## Getting started
 
-### Pré-requisitos
+### Prerequisites
 
-- Docker e Docker Compose
-- Uma chave de API do PUBG, gerada gratuitamente em <https://developer.pubg.com/>
+- Docker and Docker Compose
+- A PUBG API key, free at <https://developer.pubg.com/>
 
-### 1. Configurar as variáveis de ambiente
+### 1. Set the environment variables
 
 ```bash
 cp .env.example .env
 ```
 
-Edite o `.env` e preencha pelo menos `PUBG_API_KEY` e `PLAYER_NAMES` (nicks separados por vírgula).
+Edit `.env` and fill in at least `PUBG_API_KEY` and `PLAYER_NAMES` (comma-separated player names).
 
-| Variável | Descrição | Padrão |
+| Variable | Description | Default |
 |---|---|---|
-| `PUBG_API_KEY` | Chave da API do PUBG | — |
-| `PLAYER_NAMES` | Jogadores a monitorar, separados por vírgula | `v1t1n` |
-| `PUBG_SHARD` | Plataforma (`steam`, `kakao`, `console`...) | `steam` |
-| `API_CALLS_LIMIT` | Requisições por minuto permitidas | `10` |
-| `POSTGRES_*` | Credenciais do banco | ver `.env.example` |
+| `PUBG_API_KEY` | PUBG API key | — |
+| `PLAYER_NAMES` | Players to track, comma-separated | `v1t1n` |
+| `PUBG_SHARD` | Platform (`steam`, `kakao`, `console`...) | `steam` |
+| `API_CALLS_LIMIT` | Allowed requests per minute | `10` |
+| `POSTGRES_*` | Database credentials | see `.env.example` |
 
-### 2. Subir o ambiente
+### 2. Start the environment
 
 ```bash
 docker compose up -d
 ```
 
-Isso sobe o Postgres (já com os schemas criados), inicializa o banco de metadados do Airflow e cria um usuário admin.
+This starts Postgres (with the schemas already created), initializes the Airflow metadata database and creates an admin user.
 
-### 3. Rodar a DAG
+### 3. Run the DAG
 
-1. Acesse <http://localhost:8080> (usuário `admin`, senha `admin`)
-2. Ative a DAG `pubg_pipeline`
-3. Dispare manualmente ou aguarde o agendamento diário
+1. Open <http://localhost:8080> (user `admin`, password `admin`)
+2. Turn on the `pubg_pipeline` DAG
+3. Trigger it manually or wait for the daily schedule
 
-### 4. Consultar os dados
+### 4. Query the data
 
 ```bash
 docker compose exec postgres psql -U pubg -d pubg
@@ -123,9 +123,9 @@ FROM gold.player_career
 ORDER BY avg_damage DESC;
 ```
 
-### Execução local, sem Airflow
+### Local run, without Airflow
 
-Com o Postgres do compose rodando:
+With the compose Postgres running:
 
 ```bash
 python -m venv venv
@@ -134,12 +134,12 @@ pip install requests python-dotenv psycopg2-binary
 python src/main.py
 ```
 
-> As credenciais `admin/admin` e `pubg_secret` são padrões para desenvolvimento local. Não use em ambientes expostos.
+> The `admin/admin` and `pubg_secret` credentials are defaults for local development. Don't use them in exposed environments.
 
-## Próximos passos
+## Next steps
 
-- [ ] Dynamic Task Mapping no Airflow para paralelizar o download das partidas
-- [ ] Testes unitários das transformações e validação de schema (pydantic)
-- [ ] Ingestão de telemetria das partidas (eventos de kill, posição etc.)
-- [ ] Modelagem do gold com dbt
-- [ ] Dashboard (Metabase/Superset) sobre a camada gold
+- [ ] Airflow Dynamic Task Mapping to parallelize match downloads
+- [ ] Unit tests for the transformations and schema validation (pydantic)
+- [ ] Ingestion of match telemetry (kill events, positions, etc.)
+- [ ] Gold-layer modeling with dbt
+- [ ] Dashboard (Metabase/Superset) on top of the gold layer

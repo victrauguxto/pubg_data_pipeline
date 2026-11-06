@@ -7,8 +7,8 @@ Returns a structured dict with three sections:
   - "participants": lookup map { participant_id -> { playerId, name, stats } }
 
 "rosters" and "participants" are intentionally kept as raw-but-clean dicts so
-that normalize_matches.py and normalize_players.py can each consume only what
-they need without any coupling to the ingestion layer.
+that normalize_matches.py can consume only what it needs without any
+coupling to the ingestion layer.
 """
 
 import os
