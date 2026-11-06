@@ -6,3 +6,5 @@ data/*
 logs/
 postgres_data/
 airflow/logs/
+venv/
+.venv/
